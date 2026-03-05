@@ -111,6 +111,47 @@ xml_escape() {
   sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g'
 }
 
+# ── Load .enzymeignore patterns ────────────────────────────────
+load_ignore_patterns() {
+  local dir="$1"
+  IGNORE_PATTERNS=()
+
+  # Default security patterns (always ignored)
+  IGNORE_PATTERNS+=("*.env" ".env.*" "*.pem" "*.key" "*.p12" "*.pfx")
+  IGNORE_PATTERNS+=("*secret*" "*credential*" "*password*" "*token*")
+  IGNORE_PATTERNS+=("id_rsa*" "id_ed25519*" "*.keystore")
+
+  # Load .enzymeignore from dir, then repo root
+  local ignore_file=""
+  if [[ -f "${dir}/.enzymeignore" ]]; then
+    ignore_file="${dir}/.enzymeignore"
+  elif [[ -f ".enzymeignore" ]]; then
+    ignore_file=".enzymeignore"
+  fi
+
+  if [[ -n "$ignore_file" ]]; then
+    while IFS= read -r pattern; do
+      # Skip comments and blank lines
+      [[ "$pattern" =~ ^#.*$ || -z "$pattern" ]] && continue
+      IGNORE_PATTERNS+=("$pattern")
+    done < "$ignore_file"
+  fi
+}
+
+# ── Check if a filename matches ignore patterns ───────────────
+is_ignored() {
+  local fname="$1"
+  local lname
+  lname=$(echo "$fname" | tr '[:upper:]' '[:lower:]')
+  for pattern in "${IGNORE_PATTERNS[@]}"; do
+    # shellcheck disable=SC2254
+    case "$lname" in
+      $pattern) return 0 ;;
+    esac
+  done
+  return 1
+}
+
 # ── Process a single folder ──────────────────────────────────
 process_folder() {
   local dir="$1"
@@ -122,6 +163,7 @@ process_folder() {
   fi
 
   load_config "$dir"
+  load_ignore_patterns "$dir"
 
   local total_files=0
   local total_bytes=0
@@ -133,6 +175,12 @@ process_folder() {
   # Collect files (non-hidden, non-binary, skip .enzyme itself)
   local files=()
   while IFS= read -r -d '' f; do
+    local bname
+    bname=$(basename "$f")
+    # Skip files matching .enzymeignore patterns
+    if is_ignored "$bname"; then
+      continue
+    fi
     files+=("$f")
   done < <(find "$dir" -maxdepth 1 -type f -not -name '.*' -not -name "$OUTPUT_FILE" -print0 2>/dev/null | sort -z)
 
