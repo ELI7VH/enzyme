@@ -1,0 +1,19 @@
+# /enzyme:read
+
+Read and interpret an `.enzyme` digest file.
+
+## Usage
+
+```
+/enzyme:read <path>
+/enzyme:read ./src/.enzyme
+/enzyme:read ./cloudy-ideas
+```
+
+## Behavior
+
+1. If path is a directory, look for `.enzyme` inside it
+2. Read the `.enzyme` file
+3. Present a summary: folder name, file count, total size, generation date
+4. List each file with its summary/content
+5. Highlight any files that may be stale (modified after digest generation)

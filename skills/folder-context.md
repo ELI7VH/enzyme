@@ -1,0 +1,19 @@
+# Folder Context Skill
+
+## When to Activate
+
+When exploring or entering a folder that contains a `.enzyme` file, read it FIRST before globbing or reading individual files. The digest gives you instant context about every file in the folder.
+
+## Behavior
+
+1. Check for `.enzyme` in the target directory
+2. If found, read it — this replaces the need to glob + read individual files
+3. Use the digest metadata (lines, bytes, keywords) to decide which files need deep-reading
+4. Only read individual files when you need the full content beyond what the digest provides
+
+## Why This Matters
+
+Without enzyme: glob folder → read file 1 → read file 2 → ... → read file N (N+1 tool calls)
+With enzyme: read .enzyme (1 tool call, full context)
+
+The savings compound as folders grow. A 20-file folder goes from 21 tool calls to 1.

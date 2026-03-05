@@ -1,0 +1,24 @@
+{
+  "name": "enzyme",
+  "version": "0.1.0",
+  "description": "Auto-generated, LLM-optimized folder digests. Machine-first. Zero maintenance. Breaks complex folder structures into flat XML that an LLM can absorb in one shot.",
+  "author": {
+    "name": "Elijah Lucian",
+    "url": "https://elijahlucian.ca"
+  },
+  "homepage": "https://github.com/ELI7VH/enzyme",
+  "repository": "https://github.com/ELI7VH/enzyme",
+  "license": "MIT",
+  "keywords": [
+    "llm",
+    "context",
+    "digest",
+    "summarizer",
+    "folder",
+    "xml",
+    "claude",
+    "ai",
+    "developer-tools",
+    "productivity"
+  ]
+}
