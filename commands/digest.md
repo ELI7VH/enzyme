@@ -1,6 +1,6 @@
 # /enzyme:digest
 
-Generate an `.enzyme` digest for a folder.
+Generate an `.enzyme` digest for a folder using nzym.
 
 ## Usage
 
@@ -12,7 +12,7 @@ Generate an `.enzyme` digest for a folder.
 
 ## Behavior
 
-1. Run the enzyme CLI on the specified path
+1. Run the nzym CLI (`enzyme.sh`) on the specified path
 2. Generate a `.enzyme` file in that folder
 3. Report compression stats
 

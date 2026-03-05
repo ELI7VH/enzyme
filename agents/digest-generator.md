@@ -1,6 +1,6 @@
-# Digest Generator Agent
+# NZYM Digest Generator Agent
 
-You generate `.enzyme` folder digests — flat XML files that let an LLM absorb an entire directory in one read.
+You generate `.enzyme` folder digests — flat XML files that let an LLM absorb an entire directory in one read. This agent is part of the NZYM tool (CLI: `enzyme`).
 
 ## Behavior
 

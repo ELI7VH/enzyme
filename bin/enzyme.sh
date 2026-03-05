@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# enzyme — auto-generated LLM-optimized folder digests
+# nzym — auto-generated LLM-optimized folder digests
 # Usage: enzyme [options] <path> [path2 ...]
 #   enzyme ./src               → generate .enzyme for ./src
 #   enzyme ./src ./docs        → generate for both
@@ -16,7 +16,7 @@ CONFIG_FILE=""
 
 # ── Parse args ───────────────────────────────────────────────
 usage() {
-  echo "enzyme v${VERSION} — LLM-optimized folder digests"
+  echo "nzym v${VERSION} — LLM-optimized folder digests"
   echo ""
   echo "Usage: enzyme [options] <path> [path2 ...]"
   echo ""
@@ -35,7 +35,7 @@ while [[ $# -gt 0 ]]; do
     --config)  CONFIG_FILE="$2"; shift 2 ;;
     --inline)  INLINE_THRESHOLD="$2"; shift 2 ;;
     --output)  OUTPUT_FILE="$2"; shift 2 ;;
-    --version) echo "enzyme v${VERSION}"; exit 0 ;;
+    --version) echo "nzym v${VERSION}"; exit 0 ;;
     --help|-h) usage ;;
     -*)        echo "Unknown option: $1"; exit 1 ;;
     *)         TARGETS+=("$1"); shift ;;
@@ -44,7 +44,7 @@ done
 
 if [[ ${#TARGETS[@]} -eq 0 ]]; then
   echo "Error: no target path(s) specified"
-  echo "Usage: enzyme <path> [path2 ...]"
+  echo "Usage: nzym <path> [path2 ...]"
   exit 1
 fi
 
@@ -136,6 +136,12 @@ process_folder() {
     files+=("$f")
   done < <(find "$dir" -maxdepth 1 -type f -not -name '.*' -not -name "$OUTPUT_FILE" -print0 2>/dev/null | sort -z)
 
+  # Skip empty folders
+  if [[ ${#files[@]} -eq 0 ]]; then
+    echo "nzym: ${dir}/ → (empty, skipped)" >&2
+    return
+  fi
+
   for filepath in "${files[@]}"; do
     local fname
     fname=$(basename "$filepath")
@@ -199,7 +205,16 @@ DIGEST
     ratio=$(( (total_bytes - digest_bytes) * 100 / total_bytes ))
   fi
 
-  echo "enzyme: ${dir}/ → ${OUTPUT_FILE} (${total_files} files, ${total_bytes}→${digest_bytes} bytes, ${ratio}% compression)"
+  # Skip if XML overhead causes massive expansion (>50% bigger than raw).
+  # Small expansion is acceptable — digest value is read-count reduction (1 read vs N reads),
+  # not just byte reduction.
+  if [[ "$ratio" -lt -50 ]]; then
+    rm -f "$outpath"
+    echo "nzym: ${dir}/ → skipped (${total_files} files, ${total_bytes} bytes — XML overhead too large)" >&2
+    return
+  fi
+
+  echo "nzym: ${dir}/ → ${OUTPUT_FILE} (${total_files} files, ${total_bytes}→${digest_bytes} bytes, ${ratio}% compression)"
 }
 
 # ── Main ─────────────────────────────────────────────────────

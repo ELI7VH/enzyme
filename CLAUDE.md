@@ -1,8 +1,8 @@
-# Enzyme — Claude Plugin
+# NZYM — Claude Plugin
 
 ## What This Is
 
-A Claude Code plugin that generates LLM-optimized folder digests. Instead of globbing and reading every file in a directory, read one `.enzyme` file and know everything. The digest is regenerated, never hand-edited.
+NZYM (CLI: `enzyme`) is a Claude Code plugin that generates LLM-optimized folder digests. Instead of globbing and reading every file in a directory, read one `.enzyme` file and know everything. The digest is regenerated, never hand-edited.
 
 ## Plugin Structure
 
@@ -30,7 +30,7 @@ bin/
 
 ## Key Principle
 
-Enzymes break down complex structures into absorbable forms. One file, full context.
+NZYM breaks down complex structures into absorbable forms. One file, full context.
 
 ## Configuration
 

@@ -1,12 +1,14 @@
-# enzyme
+# NZYM
+
+*formerly enzyme*
 
 > Auto-generated, LLM-optimized folder digests. Machine-first. Zero maintenance.
 
-Enzymes break down complex structures into absorbable forms. This tool does exactly that — breaks a folder of files into a flat XML digest that an LLM can absorb in one shot.
+Enzymes break down complex structures into absorbable forms. NZYM does exactly that — breaks a folder of files into a flat XML digest that an LLM can absorb in one shot. The CLI command is `enzyme` (via `enzyme.sh`), the output file is `.enzyme`, but the tool identity is **NZYM**.
 
 ## Why
 
-Without enzyme, an LLM entering a 20-file folder needs 21 tool calls (glob + read each). With enzyme, it reads one `.enzyme` file and knows everything. 95% byte compression. One read instead of many.
+Without nzym, an LLM entering a 20-file folder needs 21 tool calls (glob + read each). With nzym, it reads one `.enzyme` file and knows everything. 95% byte compression. One read instead of many.
 
 ## Install
 
@@ -73,7 +75,7 @@ output_file: .enzyme
 
 ## Claude Code Plugin
 
-When installed as a Claude plugin, enzyme provides:
+When installed as a Claude plugin, nzym provides:
 
 | Component | Purpose |
 |-----------|---------|
@@ -90,9 +92,42 @@ When installed as a Claude plugin, enzyme provides:
 - **Tagged** — XML delimiters for predictable LLM parsing
 - **Zero-dep** — bash only, works everywhere
 
+## Benchmarks
+
+Tested across 5 utility folders, 2 production codebases, and 3 algorithmic compression baselines. Full results in [BENCHMARKS.md](BENCHMARKS.md).
+
+| Metric | Result |
+|--------|--------|
+| Average compression | 82-89% |
+| Context accuracy | 96.7% (14.5/15 questions answered correctly from digest alone) |
+| vs gzip -9 | 2.4x better reduction while remaining LLM-readable |
+| vs zstd -19 | 2.4x better (11.6% vs 28.4% of raw) |
+| Code pattern preservation | Hooks/configs/utilities: 100%. Large components: architectural awareness only |
+| Optimal inline threshold | 50 lines (confirmed via sweep from 20-150) |
+
+### Environmental Impact (per developer/year)
+
+| Metric | Savings |
+|--------|---------|
+| Tokens saved | 1.97 billion |
+| Energy | 19.7 kWh |
+| Water | 35.5 liters (71 bottles) |
+| At 100K devs | 1.97 GWh + 1.4 Olympic pools of water |
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for the full vision: strict vs delulu modes, cross-dimensional pattern matching, pattern deviation detection, Obsidian cross-system sync, LLM-powered compression inserts.
+
+## Tests
+
+```bash
+bash tests/test-enzyme.sh
+# 19/19 passing
+```
+
 ## Proof of Work
 
-Built during a [WaveLoop](https://waveloop.app) development session. The `cloudy-ideas/` folder (10 files, 66KB) compressed to 2.9KB (95% reduction) with full context preserved.
+Built during a [WaveLoop](https://waveloop.app) development session. Benchmarked across 7 real-world codebases covering ~460KB of source code.
 
 ## License
 
