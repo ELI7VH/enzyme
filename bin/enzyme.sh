@@ -202,7 +202,7 @@ process_folder() {
     local lines bytes modified summary
     lines=$(wc -l < "$filepath" | tr -d ' ')
     bytes=$(wc -c < "$filepath" | tr -d ' ')
-    modified=$(stat -f '%Sm' -t '%Y-%m-%d' "$filepath" 2>/dev/null || stat -c '%y' "$filepath" 2>/dev/null | cut -d' ' -f1)
+    modified=$(stat -f '%Sm' -t '%Y-%m-%d' "$filepath" 2>/dev/null) || modified=$(stat -c '%y' "$filepath" 2>/dev/null | cut -d' ' -f1)
 
     total_files=$((total_files + 1))
     total_bytes=$((total_bytes + bytes))

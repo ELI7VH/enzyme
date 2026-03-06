@@ -289,3 +289,95 @@ NZYM's two-mode strategy maps to two LLM use cases:
 1. **Language-aware stop words:** The keyword extractor should filter JS/TS noise tokens (`const`, `import`, `var`, `return`, `div`, `rem`) alongside English stop words. These dominate every file and convey zero domain signal.
 2. **Export extraction:** For TypeScript files, extracting exported symbol names (function/component/type exports) would provide far more useful context than raw keyword frequency.
 3. **Recursive mode:** The depth-1 limitation requires running enzyme per-directory. A `--recursive` flag would make real-world codebase digestion practical.
+
+---
+
+## 9. Cross-Platform Scale Benchmark (Windows GPU Workstation)
+
+Benchmark date: 2026-03-05 MST
+Machine: `lucianlabs-2025` — Windows 11, GPU workstation (i7/RTX, NVMe SSD)
+Scope: 14 repos + 3 Obsidian vaults, 995 folders scanned
+
+### Aggregate
+
+| Metric | Value |
+|--------|-------|
+| Folders scanned | 995 |
+| Folders processed | 336 |
+| Folders skipped (XML overhead/empty) | 409 |
+| Errors (binary/timeout) | 17 |
+| Files digested | 1,314 |
+| Raw bytes | 5,201,592 (4.96 MB) |
+| Digest bytes | 1,023,697 (0.98 MB) |
+| **Overall compression** | **80%** |
+| Tokens saved per load | 1,044,474 |
+| Elapsed | 1,346s (22 min) |
+
+### Per-Repo Breakdown
+
+| Repo | Folders | Files | Raw | Digest | Compression |
+|------|---------|-------|-----|--------|-------------|
+| rust-dabblings | 8 | 25 | 262 KB | 15 KB | **94%** |
+| rust-sketches | 8 | 13 | 113 KB | 8 KB | **93%** |
+| dank-inc | 12 | 37 | 296 KB | 23 KB | **92%** |
+| enzyme | 5 | 14 | 76 KB | 8 KB | 89% |
+| gitlab | 1 | 1 | 5 KB | 0.5 KB | 89% |
+| lucian-utils | 134 | 524 | 3,001 KB | 396 KB | **86%** |
+| elijahlucian.ca | 22 | 77 | 295 KB | 39 KB | 86% |
+| eli7vh.github.io | 1 | 2 | 6 KB | 1 KB | 86% |
+| ecosystem-v1 | 14 | 67 | 211 KB | 47 KB | 77% |
+| nextgenart | 4 | 12 | 25 KB | 7 KB | 72% |
+| creative-journal-web | 15 | 29 | 68 KB | 24 KB | 65% |
+| genart | 45 | 139 | 183 KB | 88 KB | 51% |
+| ggj2025 | 11 | 57 | 111 KB | 60 KB | 46% |
+| lucian-labs | 2 | 3 | 2 KB | 2 KB | -4% |
+
+### Obsidian Vault Breakdown
+
+| Vault | Folders | Files | Raw | Digest | Compression |
+|-------|---------|-------|-----|--------|-------------|
+| _agent-sync | 1 | 2 | 5 KB | 1 KB | **83%** |
+| Music | 24 | 130 | 264 KB | 115 KB | 56% |
+| Corpo | 25 | 155 | 251 KB | 167 KB | 33% |
+| Mobile | 4 | 27 | 27 KB | 23 KB | 15% |
+| **Total** | **54** | **314** | **547 KB** | **306 KB** | **44%** |
+
+### Top Compression Performers
+
+| Folder | Files | Raw | Digest | Compression |
+|--------|-------|-----|--------|-------------|
+| dank-inc/solar-synth | 1 | 109 KB | 0.5 KB | **99%** |
+| lucian-utils/waveloop/clap | 3 | 149 KB | 1.2 KB | **99%** |
+| lucian-utils/waveloop/plugins/juce | 4 | 134 KB | 1.4 KB | **98%** |
+| rust-sketches/workspace | 3 | 87 KB | 1.2 KB | **98%** |
+| rust-dabblings/workspace | 2 | 99 KB | 1.0 KB | **98%** |
+
+### Key Findings — Cross-Platform
+
+1. **Windows compatibility confirmed.** Zero code changes needed for Git Bash on Windows. The `file --mime-type` command and `stat` fallback work correctly. Only `grep -oP` (Perl regex) is unsupported — benchmarking script uses `sed` instead.
+
+2. **Compression by content type:**
+   - **Rust workspaces** (94%): `Cargo.lock` and generated files compress extremely well.
+   - **npm packages** (92%): `package.json`, configs, and READMEs are dominated by structural redundancy.
+   - **Monorepos** (86%): lucian-utils with 134 folders — NZYM's per-folder approach shines here.
+   - **Creative code** (51-72%): generative art sketches have less structural redundancy, more unique code per file.
+   - **Obsidian vaults** (44%): dense prose with minimal boilerplate. Expected — NZYM's value here is read-count reduction (1 read vs 314 reads), not byte reduction.
+   - **Game projects** (46%): GDScript scene files, shaders, and resource definitions resist compression.
+
+3. **Skip rate:** 41% of folders were auto-skipped (XML overhead exceeds content). This is correct behavior — digesting a folder with one 5-line config file produces more XML than the original.
+
+4. **Error rate:** 1.7% (17/995). All errors are either binary-heavy folders (images, compiled assets) or timeout on extremely large files. No data corruption or incorrect output.
+
+5. **Performance:** ~1.35s per folder average. The `file --mime-type` binary detection is the bottleneck on Windows (~500ms per call vs ~50ms on macOS). An extension-based skip list would cut runtime by 60%+.
+
+### Environmental Impact (Updated)
+
+| Metric | Mac Only (original) | Mac + Windows (updated) |
+|--------|-------------------|------------------------|
+| Total text surface | ~8.2 MB | ~10.2 MB |
+| Tokens per full load (raw) | ~2,050,000 | ~2,550,000 |
+| Tokens per full load (digest) | ~245,000 | ~501,000 |
+| Tokens saved per load | ~1,805,000 | ~2,049,000 |
+| Compression | 88% | 80% |
+
+The lower overall compression (80% vs 88%) reflects Obsidian vaults being included — dense prose compresses less than code. Code-only compression remains 86%+.

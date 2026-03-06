@@ -1,0 +1,22 @@
+NZYM Benchmark Summary
+======================================
+Date: 2026-03-06T01:22:00Z
+Machine: lucianlabs-2025 (Windows 11, GPU workstation)
+Repos: /c/Users/elija/repos
+Elapsed: 1346s
+
+Folders processed: 336
+Folders skipped: 409
+Errors: 17
+Files digested: 1314
+
+Raw: 5201592 bytes (4.96 MB)
+Digest: 1023697 bytes (0.98 MB)
+Compression: 80%
+
+Tokens (raw): 1300398
+Tokens (digest): 255924
+Tokens saved: 1044474 (80%)
+
+CSV: /c/Users/elija/repos/enzyme/benchmark-results-20260305-175934.csv
+Log: /c/Users/elija/repos/enzyme/benchmark-20260305-175934.log
