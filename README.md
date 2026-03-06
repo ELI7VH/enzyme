@@ -125,6 +125,20 @@ bash tests/test-enzyme.sh
 # 19/19 passing
 ```
 
+## Bonus: nzym-chat
+
+Digests Claude Code conversation transcripts (JSONL) into structured XML summaries. Extracts user messages, assistant responses, files modified, tools used, and errors.
+
+```bash
+# Digest all conversations on the machine
+bin/nzym-chat.sh ./chat-digests --all
+
+# Digest specific transcripts
+bin/nzym-chat.sh ./out session1.jsonl session2.jsonl
+```
+
+Real-world result: 96MB of conversation history → 450KB of queryable digests (99.5% compression).
+
 ## Proof of Work
 
 Built during a [WaveLoop](https://waveloop.app) development session. Benchmarked across 7 real-world codebases covering ~460KB of source code.

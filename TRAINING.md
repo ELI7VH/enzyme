@@ -2,6 +2,8 @@
 
 > Train a small LLM to grok YOUR codebase using NZYM digests. Runs on Apple Silicon or consumer GPUs.
 
+**Status: Aspirational.** This document describes a planned training pipeline that has not been tested in production. The architecture is sound and the tooling exists, but no fine-tuned NZYM models have been produced yet. Treat this as a roadmap, not a recipe.
+
 ## Architecture
 
 ```
