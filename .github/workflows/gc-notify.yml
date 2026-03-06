@@ -1,9 +1,9 @@
 # GroundControl — push notification feed
-# Writes commit metadata to a central feed so local agents know what changed
-# across all repos without polling each one.
+# POSTs commit metadata to control.lucianlabs.ca so local agents know what
+# changed across all repos without polling.
 #
 # Copy this file to .github/workflows/gc-notify.yml in any repo.
-# The gc_feed MCP tool reads these events via the GitHub API.
+# Requires GC_API_KEY secret set at org or repo level.
 
 name: gc-notify
 
@@ -30,7 +30,6 @@ jobs:
           AUTHOR="${{ github.actor }}"
           MESSAGE=$(git log -1 --pretty=%s)
           FILES_CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | head -20 | tr '\n' ',' | sed 's/,$//')
-          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
           echo "repo=$REPO" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
@@ -38,27 +37,34 @@ jobs:
           echo "author=$AUTHOR" >> "$GITHUB_OUTPUT"
           echo "message=$MESSAGE" >> "$GITHUB_OUTPUT"
           echo "files=$FILES_CHANGED" >> "$GITHUB_OUTPUT"
-          echo "timestamp=$TIMESTAMP" >> "$GITHUB_OUTPUT"
 
-      - name: Post to GroundControl feed
+      - name: Post to GroundControl API
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GC_API_URL: ${{ vars.GC_API_URL || 'https://control.lucianlabs.ca' }}
+          GC_API_KEY: ${{ secrets.GC_API_KEY }}
         run: |
-          # Write event as a repository dispatch to ELI7VH/ground-control
-          # Falls back gracefully if the target repo doesn't exist yet
-          gh api "repos/ELI7VH/ground-control/dispatches" \
-            --method POST \
-            -f event_type="gc-push" \
-            -f "client_payload[repo]=${{ steps.meta.outputs.repo }}" \
-            -f "client_payload[branch]=${{ steps.meta.outputs.branch }}" \
-            -f "client_payload[sha]=${{ steps.meta.outputs.sha }}" \
-            -f "client_payload[author]=${{ steps.meta.outputs.author }}" \
-            -f "client_payload[message]=${{ steps.meta.outputs.message }}" \
-            -f "client_payload[files]=${{ steps.meta.outputs.files }}" \
-            -f "client_payload[timestamp]=${{ steps.meta.outputs.timestamp }}" \
-            2>/dev/null || echo "gc-notify: dispatch target not available (non-fatal)"
+          # POST event to GroundControl central API
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "${GC_API_URL}/events" \
+            -H "Content-Type: application/json" \
+            -H "X-API-Key: ${GC_API_KEY}" \
+            -d '{
+              "repo": "${{ steps.meta.outputs.repo }}",
+              "branch": "${{ steps.meta.outputs.branch }}",
+              "sha": "${{ steps.meta.outputs.sha }}",
+              "author": "${{ steps.meta.outputs.author }}",
+              "message": "${{ steps.meta.outputs.message }}",
+              "files": "${{ steps.meta.outputs.files }}",
+              "source": "github-action"
+            }' 2>/dev/null) || STATUS="failed"
 
-          # Also log to summary for visibility
+          if [ "$STATUS" = "201" ]; then
+            echo "gc-notify: event posted successfully"
+          else
+            echo "gc-notify: API returned $STATUS (non-fatal)"
+          fi
+
+          # Log to summary for visibility
           echo "### GroundControl Push Event" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Repo:** ${{ steps.meta.outputs.repo }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Branch:** ${{ steps.meta.outputs.branch }}" >> "$GITHUB_STEP_SUMMARY"
@@ -66,3 +72,4 @@ jobs:
           echo "- **Author:** ${{ steps.meta.outputs.author }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Message:** ${{ steps.meta.outputs.message }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Files:** ${{ steps.meta.outputs.files }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **API Status:** $STATUS" >> "$GITHUB_STEP_SUMMARY"
