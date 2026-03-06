@@ -194,8 +194,13 @@ process_folder() {
     local fname
     fname=$(basename "$filepath")
 
-    # Skip binary files
-    if file -b --mime-type "$filepath" 2>/dev/null | grep -qvE '^text/'; then
+    # Skip binary files (allow text/* and common text-based application/* types)
+    local mime
+    mime=$(file -b --mime-type "$filepath" 2>/dev/null || echo "unknown")
+    if [[ "$mime" != text/* && "$mime" != application/json && "$mime" != application/javascript \
+       && "$mime" != application/xml && "$mime" != application/x-yaml \
+       && "$mime" != application/toml && "$mime" != application/x-shellscript \
+       && "$mime" != application/x-ruby && "$mime" != application/x-perl ]]; then
       continue
     fi
 
