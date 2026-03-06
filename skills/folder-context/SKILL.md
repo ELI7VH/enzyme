@@ -1,3 +1,8 @@
+---
+name: folder-context
+description: Automatically read .enzyme digest files when exploring folders. Replaces N+1 glob+read calls with a single digest read for instant folder context.
+---
+
 # NZYM Folder Context Skill
 
 ## When to Activate
