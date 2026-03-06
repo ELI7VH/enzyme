@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "nzym",
-      "source": ".claude-plugin/plugin.json",
+      "source": "./",
       "description": "Auto-generated, LLM-optimized folder digests for Claude Code",
       "version": "0.1.0",
       "category": "productivity",
