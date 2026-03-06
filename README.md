@@ -33,6 +33,9 @@ enzyme/bin/enzyme.sh ./your-folder
 # Generate digest for a folder
 enzyme.sh ./src
 
+# Recursive — digest entire tree, bottom-up with subfolder roll-up
+enzyme.sh -r ./src
+
 # Multiple folders
 enzyme.sh ./src ./docs ./scripts
 
@@ -46,19 +49,25 @@ enzyme.sh --output digest.xml ./src
 ## Output
 
 ```xml
-<enzyme folder="src" files="12" bytes="45000" lines="1200" generated="2026-03-05T21:57:13Z" mode="deterministic" version="0.1.0">
-<file name="small.ts" lines="30" bytes="800" modified="2026-03-05" mode="inline">
-// full file content inlined for small files
-export const add = (a: number, b: number) => a + b
+<enzyme folder="src" files="3" bytes="45000" lines="1200" subfolders="2" generated="2026-03-06T17:00:00Z" mode="deterministic" version="0.2.0">
+<file name="index.ts" lines="30" bytes="800" modified="2026-03-05" mode="inline">
+export { TapeEngine } from "./engine";
 </file>
-<file name="big.ts" lines="300" bytes="12000" modified="2026-03-04" keywords="audio,buffer,process,sample">
-First meaningful line extracted as summary for large files.
+<file name="engine.ts" lines="300" bytes="12000" modified="2026-03-04" keywords="audio,buffer,process,sample">
+Core audio engine for recording, playback, and loop management.
 </file>
+<subfolder name="components" files="8" lines="400" bytes="15000" keywords="button,modal,waveform,controls" digest="true">
+files: WaveformView.tsx,TransportBar.tsx,LoopMarkers.tsx,...
+</subfolder>
+<subfolder name="utils" files="5" lines="200" bytes="6000" keywords="format,parse,midi,time" digest="true">
+files: timeFormat.ts,midiMap.ts,wavExport.ts,...
+</subfolder>
 </enzyme>
 ```
 
 - **Small files** (under threshold): full content inlined
 - **Large files** (over threshold): first meaningful line + top keywords by frequency
+- **Subfolders** (recursive mode): metadata + keywords + file listing rolled up from child `.enzyme`
 - **Binary files**: skipped
 - **Dotfiles**: skipped
 
@@ -88,7 +97,7 @@ When installed as a Claude plugin, nzym provides:
 
 - **Generated, not maintained** — script produces it, humans never touch it
 - **Lossy on purpose** — enough for an LLM to decide what to deep-read
-- **Flat** — no nesting, no links, everything inline
+- **Hierarchical** — recursive mode rolls up child digests into parent summaries
 - **Tagged** — XML delimiters for predictable LLM parsing
 - **Zero-dep** — bash only, works everywhere
 
@@ -122,7 +131,7 @@ See [ROADMAP.md](ROADMAP.md) for the full vision: strict vs delulu modes, cross-
 
 ```bash
 bash tests/test-enzyme.sh
-# 19/19 passing
+# 29/29 passing
 ```
 
 ## Bonus: nzym-chat

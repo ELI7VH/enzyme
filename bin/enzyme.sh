@@ -3,16 +3,25 @@
 # Usage: enzyme [options] <path> [path2 ...]
 #   enzyme ./src               → generate .enzyme for ./src
 #   enzyme ./src ./docs        → generate for both
+#   enzyme -r ./src            → recursive (all subdirs, bottom-up)
 #   enzyme --config .enzyme.yml ./src  → use custom config
 #   enzyme --inline 80         → inline files under 80 lines
 #   enzyme --output digest.xml → custom output filename
 set -euo pipefail
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 INLINE_THRESHOLD=50
 OUTPUT_FILE=".enzyme"
 FORMAT="xml"
 CONFIG_FILE=""
+RECURSIVE=false
+
+# ── Fallback directory ignore patterns (used outside git repos) ──
+FALLBACK_DIR_IGNORE="node_modules .git .hg .svn __pycache__ .tox .mypy_cache .pytest_cache
+dist build target out .next .nuxt .cache .parcel-cache .turbo
+.godot .import vendor deps _build .elixir_ls .zig-cache
+_deps CMakeFiles .vs .vscode .idea coverage .nyc_output .gradle
+.eggs DerivedData Pods"
 
 # ── Parse args ───────────────────────────────────────────────
 usage() {
@@ -21,6 +30,7 @@ usage() {
   echo "Usage: enzyme [options] <path> [path2 ...]"
   echo ""
   echo "Options:"
+  echo "  -r, --recursive   Walk subdirectories bottom-up, roll up child digests"
   echo "  --config <file>   Config file (default: .enzyme.yml in target or repo root)"
   echo "  --inline <lines>  Inline files under N lines (default: ${INLINE_THRESHOLD})"
   echo "  --output <file>   Output filename (default: ${OUTPUT_FILE})"
@@ -32,6 +42,7 @@ usage() {
 TARGETS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -r|--recursive) RECURSIVE=true; shift ;;
     --config)  CONFIG_FILE="$2"; shift 2 ;;
     --inline)  INLINE_THRESHOLD="$2"; shift 2 ;;
     --output)  OUTPUT_FILE="$2"; shift 2 ;;
@@ -47,6 +58,12 @@ if [[ ${#TARGETS[@]} -eq 0 ]]; then
   echo "Usage: nzym <path> [path2 ...]"
   exit 1
 fi
+
+# ── Detect if a path is inside a git repo ─────────────────────
+is_in_git_repo() {
+  local dir="$1"
+  git -C "$dir" rev-parse --is-inside-work-tree &>/dev/null
+}
 
 # ── Config loading (basic YAML parsing) ─────────────────────
 load_config() {
@@ -108,6 +125,25 @@ xml_escape() {
   sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g'
 }
 
+# ── Portable file modification date ──────────────────────────
+file_modified() {
+  local filepath="$1"
+  # GNU stat (Linux, Git Bash, MSYS) — try first since macOS stat -c fails cleanly
+  local mod
+  mod=$(stat -c '%y' "$filepath" 2>/dev/null | cut -d' ' -f1)
+  if [[ -n "$mod" && "$mod" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    echo "$mod"
+    return
+  fi
+  # macOS stat
+  mod=$(stat -f '%Sm' -t '%Y-%m-%d' "$filepath" 2>/dev/null)
+  if [[ -n "$mod" && "$mod" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    echo "$mod"
+    return
+  fi
+  echo "unknown"
+}
+
 # ── Load .enzymeignore patterns ────────────────────────────────
 load_ignore_patterns() {
   local dir="$1"
@@ -149,6 +185,86 @@ is_ignored() {
   return 1
 }
 
+# ── Check if a directory should be skipped (fallback) ─────────
+is_dir_ignored_fallback() {
+  local dname="$1"
+  local ign
+  for ign in $FALLBACK_DIR_IGNORE; do
+    [[ "$dname" == "$ign" ]] && return 0
+  done
+  # Also skip hidden dirs
+  [[ "$dname" == .* ]] && return 0
+  return 1
+}
+
+# ── Extract summary from a child .enzyme file ─────────────────
+# Reads a child's .enzyme and produces a <subfolder> XML element
+summarize_child_digest() {
+  local child_enzyme="$1"
+  local child_name="$2"
+
+  if [[ ! -f "$child_enzyme" ]]; then
+    return
+  fi
+
+  # Extract attributes from the root <enzyme> tag
+  local files_attr bytes_attr lines_attr
+  files_attr=$(grep -o 'files="[^"]*"' "$child_enzyme" | head -1 | sed 's/files="//;s/"//')
+  bytes_attr=$(grep -o 'bytes="[^"]*"' "$child_enzyme" | head -1 | sed 's/bytes="//;s/"//')
+  lines_attr=$(grep -o 'lines="[^"]*"' "$child_enzyme" | head -1 | sed 's/lines="//;s/"//')
+
+  # Count subfolder elements in child (for total_subfolders)
+  local child_subfolders
+  child_subfolders=$(grep -c '<subfolder ' "$child_enzyme" 2>/dev/null) || true
+  [[ -z "$child_subfolders" ]] && child_subfolders=0
+
+  # Extract all keywords from child digest (from file keyword attrs + subfolder keyword attrs)
+  local all_keywords
+  all_keywords=$(grep -o 'keywords="[^"]*"' "$child_enzyme" 2>/dev/null \
+    | sed 's/keywords="//;s/"//' \
+    | tr ',' '\n' \
+    | sort | uniq -c | sort -rn \
+    | awk 'NR<=8 {print $2}' \
+    | paste -sd ',' -)
+
+  # Extract file names from child digest for a content listing
+  local file_names
+  file_names=$(grep -o '<file name="[^"]*"' "$child_enzyme" 2>/dev/null \
+    | sed 's/<file name="//;s/"//' \
+    | paste -sd ',' -)
+
+  # Collect subfolder names from child (for nested tree awareness)
+  local subfolder_names
+  subfolder_names=$(grep -o '<subfolder name="[^"]*"' "$child_enzyme" 2>/dev/null \
+    | sed 's/<subfolder name="//;s/"//' \
+    | paste -sd ',' -)
+
+  # Build the summary text: file listing + nested subfolders
+  local summary_text=""
+  if [[ -n "$file_names" ]]; then
+    summary_text="files: ${file_names}"
+  fi
+  if [[ -n "$subfolder_names" ]]; then
+    [[ -n "$summary_text" ]] && summary_text="${summary_text} | "
+    summary_text="${summary_text}subfolders: ${subfolder_names}"
+  fi
+
+  # Emit <subfolder> element
+  local attrs="name=\"${child_name}\""
+  [[ -n "$files_attr" ]] && attrs="${attrs} files=\"${files_attr}\""
+  [[ -n "$lines_attr" ]] && attrs="${attrs} lines=\"${lines_attr}\""
+  [[ -n "$bytes_attr" ]] && attrs="${attrs} bytes=\"${bytes_attr}\""
+  [[ -n "$child_subfolders" && "$child_subfolders" != "0" ]] && attrs="${attrs} subfolders=\"${child_subfolders}\""
+  [[ -n "$all_keywords" ]] && attrs="${attrs} keywords=\"${all_keywords}\""
+  attrs="${attrs} digest=\"true\""
+
+  echo "<subfolder ${attrs}>"
+  if [[ -n "$summary_text" ]]; then
+    echo "${summary_text}"
+  fi
+  echo "</subfolder>"
+}
+
 # ── Process a single folder ──────────────────────────────────
 process_folder() {
   local dir="$1"
@@ -166,6 +282,8 @@ process_folder() {
   local total_bytes=0
   local total_lines=0
   local entries=""
+  local subfolder_entries=""
+  local subfolder_count=0
   local now
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
@@ -181,8 +299,37 @@ process_folder() {
     files+=("$f")
   done < <(find "$dir" -maxdepth 1 -type f -not -name '.*' -not -name "$OUTPUT_FILE" -print0 2>/dev/null | sort -z)
 
-  # Skip empty folders
-  if [[ ${#files[@]} -eq 0 ]]; then
+  # Collect subfolder digests (roll up child .enzyme files into parent)
+  local subdirs=()
+  while IFS= read -r -d '' sd; do
+    local sdname
+    sdname=$(basename "$sd")
+    # Skip ignored directories (git-aware or fallback)
+    if is_in_git_repo "$dir"; then
+      git -C "$dir" check-ignore -q "$sd" 2>/dev/null && continue
+    else
+      is_dir_ignored_fallback "$sdname" && continue
+    fi
+    subdirs+=("$sd")
+  done < <(find "$dir" -maxdepth 1 -mindepth 1 -type d -print0 2>/dev/null | sort -z)
+
+  for subdir in "${subdirs[@]}"; do
+    local sdname child_enzyme
+    sdname=$(basename "$subdir")
+    child_enzyme="${subdir}/${OUTPUT_FILE}"
+    if [[ -f "$child_enzyme" ]]; then
+      local child_summary
+      child_summary=$(summarize_child_digest "$child_enzyme" "$sdname")
+      if [[ -n "$child_summary" ]]; then
+        subfolder_entries="${subfolder_entries}${child_summary}
+"
+        subfolder_count=$((subfolder_count + 1))
+      fi
+    fi
+  done
+
+  # Skip if no files AND no subfolder digests
+  if [[ ${#files[@]} -eq 0 && $subfolder_count -eq 0 ]]; then
     echo "nzym: ${dir}/ → (empty, skipped)" >&2
     return
   fi
@@ -205,7 +352,7 @@ process_folder() {
     local lines bytes modified summary
     lines=$(wc -l < "$filepath" | tr -d ' ')
     bytes=$(wc -c < "$filepath" | tr -d ' ')
-    modified=$(stat -f '%Sm' -t '%Y-%m-%d' "$filepath" 2>/dev/null) || modified=$(stat -c '%y' "$filepath" 2>/dev/null | cut -d' ' -f1)
+    modified=$(file_modified "$filepath")
 
     total_files=$((total_files + 1))
     total_bytes=$((total_bytes + bytes))
@@ -243,9 +390,16 @@ ${summary}
   local folder_name
   folder_name=$(basename "$dir")
 
+  # Build root tag attributes
+  local root_attrs="folder=\"${folder_name}\" files=\"${total_files}\" bytes=\"${total_bytes}\" lines=\"${total_lines}\""
+  if [[ $subfolder_count -gt 0 ]]; then
+    root_attrs="${root_attrs} subfolders=\"${subfolder_count}\""
+  fi
+  root_attrs="${root_attrs} generated=\"${now}\" mode=\"deterministic\" version=\"${VERSION}\""
+
   cat > "$outpath" <<DIGEST
-<enzyme folder="${folder_name}" files="${total_files}" bytes="${total_bytes}" lines="${total_lines}" generated="${now}" mode="deterministic" version="${VERSION}">
-${entries}</enzyme>
+<enzyme ${root_attrs}>
+${entries}${subfolder_entries}</enzyme>
 DIGEST
 
   # Stats
@@ -257,18 +411,97 @@ DIGEST
   fi
 
   # Skip if XML overhead causes massive expansion (>50% bigger than raw).
-  # Small expansion is acceptable — digest value is read-count reduction (1 read vs N reads),
-  # not just byte reduction.
-  if [[ "$ratio" -lt -50 ]]; then
+  # But never skip folders that have subfolder digests — their value is the tree map.
+  if [[ "$ratio" -lt -50 && $subfolder_count -eq 0 ]]; then
     rm -f "$outpath"
     echo "nzym: ${dir}/ → skipped (${total_files} files, ${total_bytes} bytes — XML overhead too large)" >&2
     return
   fi
 
-  echo "nzym: ${dir}/ → ${OUTPUT_FILE} (${total_files} files, ${total_bytes}→${digest_bytes} bytes, ${ratio}% compression)"
+  local extra=""
+  [[ $subfolder_count -gt 0 ]] && extra=", ${subfolder_count} subfolders"
+  echo "nzym: ${dir}/ → ${OUTPUT_FILE} (${total_files} files, ${total_bytes}→${digest_bytes} bytes, ${ratio}% compression${extra})"
+}
+
+# ── Recursive walk (bottom-up) ───────────────────────────────
+process_recursive() {
+  local root="$1"
+  root="${root%/}"
+
+  if [[ ! -d "$root" ]]; then
+    echo "Warning: ${root} is not a directory, skipping" >&2
+    return
+  fi
+
+  # Collect directories, sort by depth descending (bottom-up)
+  # This ensures children are processed before parents so roll-up works
+  local dirs=()
+  local target_in_git=false
+  is_in_git_repo "$root" && target_in_git=true
+
+  if [[ "$target_in_git" == true ]]; then
+    # Use git ls-files to discover directories — avoids walking gitignored trees entirely
+    # This is O(tracked files) not O(all files including node_modules/build dirs)
+    declare -A seen_dirs
+    while IFS= read -r d; do
+      [[ -z "$d" || -n "${seen_dirs[$d]+x}" ]] && continue
+      [[ -d "$d" ]] && { seen_dirs["$d"]=1; dirs+=("$d"); }
+      # Also add all parent directories up to root
+      local parent="$d"
+      while [[ "$parent" == */* ]]; do
+        parent="${parent%/*}"
+        [[ "$parent" == "$root" || -z "$parent" ]] && break
+        [[ -n "${seen_dirs[$parent]+x}" ]] && break
+        [[ -d "$parent" ]] && { seen_dirs["$parent"]=1; dirs+=("$parent"); }
+      done
+    done < <(
+      (git ls-files "$root" 2>/dev/null; git ls-files --others --exclude-standard "$root" 2>/dev/null) \
+        | sed 's|/[^/]*$||' | sort -u
+    )
+    # Add root itself
+    if [[ -z "${seen_dirs[$root]+x}" ]]; then
+      dirs+=("$root")
+    fi
+    # Re-sort by depth descending (bottom-up)
+    local sorted_dirs=()
+    while IFS= read -r d; do
+      [[ -n "$d" ]] && sorted_dirs+=("$d")
+    done < <(printf '%s\n' "${dirs[@]}" | awk -F/ '{print NF, $0}' | sort -rn | cut -d' ' -f2-)
+    dirs=("${sorted_dirs[@]}")
+  else
+    # No git — find + fallback ignore list
+    while IFS= read -r d; do
+      local skip=false
+      local rel="${d#${root}}"
+      rel="${rel#/}"
+      if [[ -n "$rel" ]]; then
+        IFS='/' read -ra parts <<< "$rel"
+        for part in "${parts[@]}"; do
+          if is_dir_ignored_fallback "$part"; then
+            skip=true
+            break
+          fi
+        done
+      fi
+      [[ "$skip" == true ]] && continue
+      dirs+=("$d")
+    done < <(find "$root" -type d 2>/dev/null | awk -F/ '{print NF, $0}' | sort -rn | cut -d' ' -f2-)
+  fi
+
+  local processed=0
+  for d in "${dirs[@]}"; do
+    process_folder "$d"
+    processed=$((processed + 1))
+  done
+
+  echo "nzym: recursive complete — ${processed} directories processed"
 }
 
 # ── Main ─────────────────────────────────────────────────────
 for target in "${TARGETS[@]}"; do
-  process_folder "$target"
+  if [[ "$RECURSIVE" == true ]]; then
+    process_recursive "$target"
+  else
+    process_folder "$target"
+  fi
 done

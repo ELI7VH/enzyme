@@ -317,6 +317,113 @@ else
   fail "--version output unexpected: $output"
 fi
 
+# Test 15: Recursive mode — bottom-up digestion
+echo "Test 15: Recursive mode"
+d="$TMPDIR/recursive"
+mkdir -p "$d/src/components" "$d/src/utils" "$d/lib"
+# Each file needs enough content to avoid negative compression skip
+for i in 1 2 3 4 5; do
+  {
+    for j in $(seq 1 12); do
+      echo "export const Component${i}_part${j} = () => <div>Component ${i} render block ${j} with enough text to make the digest worthwhile</div>;"
+    done
+  } > "$d/src/components/Component${i}.tsx"
+done
+for i in 1 2 3 4 5; do
+  {
+    for j in $(seq 1 10); do
+      echo "// Utility function ${i} variant ${j}"
+      echo "export function util${i}_v${j}(x: number): number { return x * ${i} + ${j}; }"
+    done
+  } > "$d/src/utils/util${i}.ts"
+done
+for i in 1 2 3 4 5; do
+  {
+    echo "# Library module ${i}"
+    echo ""
+    echo "This module handles feature ${i} of the project."
+    echo "It contains substantial content for testing enzyme digests."
+    echo "Each file has enough text to ensure digest creation works."
+    echo "The library is organized into discrete modules."
+    echo "This padding ensures the XML overhead is smaller than content."
+    echo "Additional lines help reach the threshold for positive compression."
+    echo "The NZYM tool processes these files during recursive walks."
+    echo "Bottom-up processing ensures children are digested before parents."
+  } > "$d/lib/module${i}.md"
+done
+echo 'export { Component1 } from "./components/Component1";' > "$d/src/index.ts"
+echo '{ "name": "test-project" }' > "$d/package.json"
+output=$(bash "$ENZYME" -r "$d" 2>&1)
+# Children should be processed first (bottom-up)
+if [[ -f "$d/src/components/.enzyme" ]]; then
+  pass "Leaf folder (components) digested"
+else
+  fail "Leaf folder not digested"
+fi
+if [[ -f "$d/src/.enzyme" ]]; then
+  pass "Middle folder (src) digested"
+else
+  fail "Middle folder not digested"
+fi
+if [[ -f "$d/.enzyme" ]]; then
+  pass "Root folder digested"
+else
+  fail "Root folder not digested"
+fi
+
+# Test 16: Subfolder roll-up in parent digest
+echo "Test 16: Subfolder roll-up"
+if grep -q '<subfolder name="components"' "$d/src/.enzyme" 2>/dev/null; then
+  pass "Parent digest has <subfolder> for components"
+else
+  fail "Missing subfolder roll-up for components"
+fi
+if grep -q '<subfolder name="utils"' "$d/src/.enzyme" 2>/dev/null; then
+  pass "Parent digest has <subfolder> for utils"
+else
+  fail "Missing subfolder roll-up for utils"
+fi
+if grep -q 'subfolders=' "$d/.enzyme" 2>/dev/null; then
+  pass "Root digest has subfolders attribute"
+else
+  fail "Root digest missing subfolders attribute"
+fi
+
+# Test 17: Subfolder metadata extraction
+echo "Test 17: Subfolder metadata"
+if grep -q 'files="' "$d/src/.enzyme" 2>/dev/null && grep -q 'digest="true"' "$d/src/.enzyme" 2>/dev/null; then
+  pass "Subfolder has file count and digest marker"
+else
+  fail "Subfolder missing metadata"
+fi
+
+# Test 18: Recursive with nested subfolders
+echo "Test 18: Nested subfolder roll-up"
+if grep -q '<subfolder name="src"' "$d/.enzyme" 2>/dev/null; then
+  pass "Root has src subfolder summary"
+else
+  fail "Root missing src subfolder"
+fi
+if grep -q '<subfolder name="lib"' "$d/.enzyme" 2>/dev/null; then
+  pass "Root has lib subfolder summary"
+else
+  fail "Root missing lib subfolder"
+fi
+rm -rf "$d"
+
+# Test 19: File modification dates are clean (no stat garbage)
+echo "Test 19: Clean modification dates"
+d=$(setup_small_folder)
+bash "$ENZYME" "$d" 2>/dev/null
+# Check that modified attributes match YYYY-MM-DD or "unknown"
+bad_dates=$(grep -o 'modified="[^"]*"' "$d/.enzyme" 2>/dev/null | grep -v -E 'modified="[0-9]{4}-[0-9]{2}-[0-9]{2}"' | grep -v 'modified="unknown"' || true)
+if [[ -z "$bad_dates" ]]; then
+  pass "All modification dates are clean YYYY-MM-DD format"
+else
+  fail "Bad date format found: $bad_dates"
+fi
+rm -rf "$d"
+
 # ── Results ───────────────────────────────────────────────────
 
 echo ""
