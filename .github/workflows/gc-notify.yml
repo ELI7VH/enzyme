@@ -1,0 +1,68 @@
+# GroundControl — push notification feed
+# Writes commit metadata to a central feed so local agents know what changed
+# across all repos without polling each one.
+#
+# Copy this file to .github/workflows/gc-notify.yml in any repo.
+# The gc_feed MCP tool reads these events via the GitHub API.
+
+name: gc-notify
+
+on:
+  push:
+    branches: [main, master]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Collect commit metadata
+        id: meta
+        run: |
+          REPO="${{ github.repository }}"
+          BRANCH="${{ github.ref_name }}"
+          SHA="${{ github.sha }}"
+          SHORT_SHA="${SHA:0:7}"
+          AUTHOR="${{ github.actor }}"
+          MESSAGE=$(git log -1 --pretty=%s)
+          FILES_CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | head -20 | tr '\n' ',' | sed 's/,$//')
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          echo "repo=$REPO" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "author=$AUTHOR" >> "$GITHUB_OUTPUT"
+          echo "message=$MESSAGE" >> "$GITHUB_OUTPUT"
+          echo "files=$FILES_CHANGED" >> "$GITHUB_OUTPUT"
+          echo "timestamp=$TIMESTAMP" >> "$GITHUB_OUTPUT"
+
+      - name: Post to GroundControl feed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Write event as a repository dispatch to ELI7VH/ground-control
+          # Falls back gracefully if the target repo doesn't exist yet
+          gh api "repos/ELI7VH/ground-control/dispatches" \
+            --method POST \
+            -f event_type="gc-push" \
+            -f "client_payload[repo]=${{ steps.meta.outputs.repo }}" \
+            -f "client_payload[branch]=${{ steps.meta.outputs.branch }}" \
+            -f "client_payload[sha]=${{ steps.meta.outputs.sha }}" \
+            -f "client_payload[author]=${{ steps.meta.outputs.author }}" \
+            -f "client_payload[message]=${{ steps.meta.outputs.message }}" \
+            -f "client_payload[files]=${{ steps.meta.outputs.files }}" \
+            -f "client_payload[timestamp]=${{ steps.meta.outputs.timestamp }}" \
+            2>/dev/null || echo "gc-notify: dispatch target not available (non-fatal)"
+
+          # Also log to summary for visibility
+          echo "### GroundControl Push Event" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Repo:** ${{ steps.meta.outputs.repo }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Branch:** ${{ steps.meta.outputs.branch }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **SHA:** ${{ steps.meta.outputs.sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Author:** ${{ steps.meta.outputs.author }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Message:** ${{ steps.meta.outputs.message }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Files:** ${{ steps.meta.outputs.files }}" >> "$GITHUB_STEP_SUMMARY"
