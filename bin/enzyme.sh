@@ -77,13 +77,11 @@ load_config() {
 # ── Stop words for keyword extraction ────────────────────────
 STOP_WORDS="the a an and or but in on at to for of is it that this with from by as are was be have has had do does did will would could should may might can shall not no its"
 
-# ── Extract keywords from text ───────────────────────────────
+# ── Extract keywords from text (reads from stdin) ────────────
 extract_keywords() {
-  local text="$1"
-  local count="${2:-8}"
+  local count="${1:-8}"
 
-  echo "$text" \
-    | tr '[:upper:]' '[:lower:]' \
+  tr '[:upper:]' '[:lower:]' \
     | tr -cs '[:alpha:]' '\n' \
     | awk -v stops="$STOP_WORDS" '
       BEGIN { split(stops, s, " "); for (i in s) stop[s[i]]=1 }
@@ -91,8 +89,7 @@ extract_keywords() {
       END { for (w in freq) print freq[w], w }
     ' \
     | sort -rn \
-    | head -"$count" \
-    | awk '{print $2}' \
+    | awk -v n="$count" 'NR<=n {print $2}' \
     | paste -sd ',' -
 }
 
@@ -100,8 +97,8 @@ extract_keywords() {
 first_line() {
   local file="$1"
   # Skip blank lines, headings (#), frontmatter (---), HTML comments
-  grep -vE '^\s*$|^#|^---|^<!--|^-->|^```' "$file" 2>/dev/null \
-    | head -1 \
+  # Use awk instead of grep|head to avoid SIGPIPE on large files
+  awk '!/^\s*$/ && !/^#/ && !/^---/ && !/^<!--/ && !/^-->/ && !/^```/ { print; exit }' "$file" 2>/dev/null \
     | sed 's/^> //' \
     | cut -c1-200
 }
@@ -200,7 +197,8 @@ process_folder() {
     if [[ "$mime" != text/* && "$mime" != application/json && "$mime" != application/javascript \
        && "$mime" != application/xml && "$mime" != application/x-yaml \
        && "$mime" != application/toml && "$mime" != application/x-shellscript \
-       && "$mime" != application/x-ruby && "$mime" != application/x-perl ]]; then
+       && "$mime" != application/x-ruby && "$mime" != application/x-perl \
+       && "$mime" != application/x-ndjson ]]; then
       continue
     fi
 
@@ -225,7 +223,7 @@ ${content}
       # Large file: deterministic summary
       local fl kw
       fl=$(first_line "$filepath" | xml_escape)
-      kw=$(extract_keywords "$(cat "$filepath")" 8)
+      kw=$(cat "$filepath" | extract_keywords 8)
 
       if [[ -n "$fl" ]]; then
         summary="${fl}"
